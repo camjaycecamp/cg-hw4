@@ -86,9 +86,13 @@ public final class View
 	// Reference Vector
 	// TODO: PUT MEMBERS FOR THE REFERENCE VECTOR HERE
 	private Point2D.Double refVec;	// reference vector for keeping track of point velocity
-	private boolean startPos;	// whether the first dot product of all polygon sides comes out as positive or negative
-	private boolean zero;       // whether a dot product of zero is detected
-	private int j = 0;	// keep track of index belonging to smallest side's first vertex
+	private int j = 0;	// keep track of index belonging to first vertex of side the moding poing will reach first
+	private Point2D.Double pj1;	// keeping track of what j's first and second vertices are for comparing to current index's dot product
+	private Point2D.Double pj2;
+	private Point2D.Double pj; // vector of j
+	private Point2D.Double nj; // normal of j's vector
+	private double tj; // time that the point will hit j's side
+	private double dj; // dot product of j
 
 	// Tracer and Bounces
 	// TODO: PUT MEMBERS FOR THE TRACER AND BOUNCES HERE
@@ -118,7 +122,7 @@ public final class View
 
 		// Initialize reference vector
 		// TODO: INITIALIZE MEMBERS FOR THE REFERENCE VECTOR HERE
-		refVec = new Point2D.Double(0.02, 0.02);
+		refVec = new Point2D.Double(0.02, -0.01);
 
 		// Initialize tracer and bounces
 		// TODO: INITIALIZE MEMBERS FOR THE TRACER AND BOUNCES HERE
@@ -185,7 +189,7 @@ public final class View
 	public void	display(GLAutoDrawable drawable)
 	{
 		updatePipeline(drawable);
-
+		if(j > polyVertices.length-1) j = 0; // prevents OOB sections when switching between polygons of greater and fewer sizes
 		update(drawable);
 		render(drawable);
 	}
@@ -206,6 +210,8 @@ public final class View
 
 		Deque<Point2D.Double>	polygon = getCurrentPolygon();
 		Point2D.Double			q = model.getObject();
+
+		if(j > polyVertices.length-1) j = 0; // prevents OOB sections when switching between polygons of greater and fewer sizes
 
 		updatePointWithReflection(polygon, q);
 		model.setObjectInSceneCoordinatesAlt(new Point2D.Double(q.x, q.y));
@@ -553,11 +559,20 @@ public final class View
 
 			//    Loop the polygon counterclockwise, taking vertices pairwise.
 
+			//    For each side, see "Intersection of a Line through a Line".
+
+			//    Important: Check for edge cases (pun?) in which q is parallel
+			//    to the side or slightly outside it (due to roundoff error).
+			//    See Figure 4.37 and the dot products below it on page 176.
+
+			//    Always remember to check for divide-by-zero!
+
+			// loop through each vertex and find the one that produces the side the moving point will hit next
 			for(int i = 0; i < polyVertices.length; i++)
 			{
-				// prototype, could be optimized
 				if(i == polyVertices.length-1) // if last vertex, pair with 0th index
 				{
+					// pair vertex on current index with that of following index
 					p1 = new Point2D.Double(polyVertices[i].x, polyVertices[i].y);
 					p2 = new Point2D.Double(polyVertices[0].x, polyVertices[0].y);
 				}
@@ -567,28 +582,47 @@ public final class View
 					p2 = new Point2D.Double(polyVertices[i+1].x, polyVertices[i+1].y);
 				}
 
-				Point2D.Double p = new Point2D.Double(p2.x-p1.x, p2.y-p1.y);
-				Point2D.Double n = new Point2D.Double(-p.y, p.x);
+				Point2D.Double p = new Point2D.Double(p2.x-p1.x, p2.y-p1.y); // find vector from vertices...
+				Point2D.Double n = new Point2D.Double(-p.y, p.x); // ...then find normal from vector
 
-				Point2D.Double pj1 = new Point2D.Double(polyVertices[j].x, polyVertices[j].y);
-				Point2D.Double pj2 = new Point2D.Double(polyVertices[j+1].x, polyVertices[j+1].y);
-				Point2D.Double pj = new Point2D.Double(pj2.x-pj1.x, pj2.y-pj1.y);
-				Point2D.Double nj = new Point2D.Double(-pj.y, pj.x);
-				System.out.println("i: " + i + "\ni.x: " + polyVertices[i].x + "\ni.y: " + polyVertices[i].y);
-				/* System.out.println("pj1: " + pj1
-									+ "\npj2: " + pj2
-									+ "\npj: " + pj
-									+ "\nnj: " + nj
-									+ "\ni: " + i
-									+ "\ndot(n): " + dot(refVec.x, refVec.y, 0, n.x, n.y, 0)
-									+  "\ndot(nj): " + dot(refVec.x, refVec.y, 0, nj.x, nj.y, 0)); */
-				if (dot(refVec.x, refVec.y, 0, n.x, n.y, 0) < dot(refVec.x, refVec.y, 0, nj.x, nj.y, 0)) // might have issues with negatives and lack of comparing abs value
+				if(j == polyVertices.length-1) // if last vertex, pair with 0th index
 				{
-					System.out.println("bruh");
-					j = i;
+					// same process for j, the first vertex of the size the point is currently heading for, as with i
+					pj1 = new Point2D.Double(polyVertices[j].x, polyVertices[j].y);
+					pj2 = new Point2D.Double(polyVertices[0].x, polyVertices[0].y);
 				}
-				System.out.println("j: " + j);
+				else 
+				{
+					pj1 = new Point2D.Double(polyVertices[j].x, polyVertices[j].y);
+					pj2 = new Point2D.Double(polyVertices[j+1].x, polyVertices[j+1].y);
+				}
 
+				pj = new Point2D.Double(pj2.x-pj1.x, pj2.y-pj1.y);
+				nj = new Point2D.Double(-pj.y, pj.x);
+
+				double d = dot(refVec.x, refVec.y, 0, n.x, n.y, 0);	// find dot of i...
+				dj = dot(refVec.x, refVec.y, 0, nj.x, nj.y, 0); // pull up dot of j...
+
+				double t = dot(n.x, n.y, 0.0, (polyVertices[i].x-object.x), (polyVertices[i].y-object.y), 0.0)/d; // now find t_hit of i...
+				tj = dot(nj.x, nj.y, 0.0, (polyVertices[j].x-object.x), (polyVertices[j].y-object.y), 0.0)/dj; // and t_hit of j...
+				/* System.out.println("i: " + i
+					+ "\nj: " + j);
+				System.out.println("t: " + t
+									+ "\ntj: " + tj); */
+				// if t_hit of both are positive and i is smaller...
+				// or if t_hit of j is negative and i is positive...
+				// or if t_hit of both is negative and i is greater...
+				// then j becomes i
+				// even in the lattermost case, it's better to be closer to a proper value since it sets things up more easily
+				// and when j is positive as it should be, things work as they should (in theory)
+				if((t > 0 && tj > 0 && t < tj) 
+					|| (t > 0 && tj < 0)
+					|| (t < 0 && tj < 0 && t > tj)) 
+				{
+					j = i;
+					tj = dot(nj.x, nj.y, 0.0, (polyVertices[j].x-object.x), (polyVertices[j].y-object.y), 0.0)/dj; // run once more in case update needed in reflection
+					System.out.println("j switched, now is " + j);
+				}
 				// P_hit = R + v((n dot (Q-R))/(n dot v))
 				// P = R + vt		<-- R is starting point, aka the 'b' in y = mx + b
 				// v is reference vector, unaltered by point speed which goes from 0.0 to 1.0
@@ -596,27 +630,28 @@ public final class View
 				// n is (-(p2-p1).y, (p2-p1).x)
 				// Q is the first of the two vertices of any side, i.e. the q_j followed by q_j+1
 				//
-				// so all we need to do is the following steps:
+				// to figure out which side the point will hit first before calulating the trajectory, all we need to do is the following steps:
 				// 1. find dot product of vector and each side's normal (-y, x)
 				// 2. the side the vector will reach first *should* be the side with the smallest positive dot product
 				// 3. plug said side into reflecting trajectories bottom left equations and go from there
-				
 			}
-			
-			//    For each side, see "Intersection of a Line through a Line".
-
-			//    Important: Check for edge cases (pun?) in which q is parallel
-			//    to the side or slightly outside it (due to roundoff error).
-			//    See Figure 4.37 and the dot products below it on page 176.
-
-			//    Always remember to check for divide-by-zero!
 
 			// 2. If the point WON'T reach the closest side in this update,
 			//    simply add the vector to it, and break out of the loop.
-			if(object.x == object.x) 
+			if(tj >= 1) 
 			{
 				model.setObjectInSceneCoordinates(new Point2D.Double(object.x+refScale.x, object.y+refScale.y));
 				break;
+			}
+			else 
+			{
+				System.out.println("bruh");
+				Point2D.Double v_reflected = new Point2D.Double(refScale.x-2*(dot(refScale.x, refScale.y, 0, nj.x, nj.y, 0))*nj.x,
+																refScale.y-2*(dot(refScale.x, refScale.y, 0, nj.x, nj.y, 0))*nj.y);
+				Point2D.Double object_hit = new Point2D.Double(object.x+refScale.x*tj, object.y+refScale.y*tj);
+				model.setObjectInSceneCoordinates(new Point2D.Double(object_hit.x+v_reflected.x*(1-tj), object_hit.y+v_reflected.y*(1-tj)));
+				refScale = v_reflected;
+				System.out.println("bruh2");
 			}
 			//    Or if it WILL reach the side:
 
@@ -652,11 +687,11 @@ public final class View
 
 		// Hint: Use dot(). See the slide on "Testing Containment in 2D".
 
-		Point2D.Double sp = new Point2D.Double(p2.x - p1.x, p2.y - p1.y);
+		Point2D.Double sp = new Point2D.Double(p2.x - p1.x, p2.y - p1.y); // finding side vector
 
-		Point2D.Double dif_q = new Point2D.Double(q.x - p1.x, q.y - p1.y);
-		Point2D.Double dif_p = new Point2D.Double(-sp.y, sp.x);
-		double dp = dot(dif_q.x, dif_q.y, 0, dif_p.x, dif_p.y, 0);
+		Point2D.Double dif_q = new Point2D.Double(q.x - p1.x, q.y - p1.y); // distance from point to first vertex of side
+		Point2D.Double dif_p = new Point2D.Double(-sp.y, sp.x);	// normal side vector
+		double dp = dot(dif_q.x, dif_q.y, 0, dif_p.x, dif_p.y, 0); // dot of the two
 
 		if(dp > 0 || (dp == 0 && !strict)) 
 			return true;
@@ -673,18 +708,29 @@ public final class View
 
 		// Hint: Use isLeft(). See the slide on "Testing Containment in 2D".
 
-		for(int i = 0; i < polyVertices.length-1; i++) 
+		for(int i = 0; i < polyVertices.length; i++) 
 		{
 			/* System.out.println("\npolyVertices[" + i + "]: " + polyVertices[i].toString());
 			System.out.println("polyVertices[" + (i+1) + "]: " + polyVertices[i+1].toString() + "\n"); */
-			if(!isLeft(polyVertices[i], polyVertices[i+1], q, true)) 
+			if(i == polyVertices.length-1) 
+			{
+				if(!isLeft(polyVertices[i], polyVertices[0], q, true)) 
 				{
 					/* System.out.println("\npolyVertices[" + i + "]: " + polyVertices[i].toString());
 					System.out.println("polyVertices[" + (i+1) + "]: " + polyVertices[i+1].toString() + "\n"); */
 					return false;
 				}
+			}
+			else 
+			{
+				if(!isLeft(polyVertices[i], polyVertices[i+1], q, true)) 
+				{
+					/* System.out.println("\npolyVertices[" + i + "]: " + polyVertices[i].toString());
+					System.out.println("polyVertices[" + (i+1) + "]: " + polyVertices[i+1].toString() + "\n"); */
+					return false;
+				}
+			}
 		}
-
 		return true;
 	}
 
