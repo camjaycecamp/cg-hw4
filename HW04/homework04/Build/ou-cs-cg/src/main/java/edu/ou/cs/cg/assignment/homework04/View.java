@@ -88,6 +88,7 @@ public final class View
 	private Point2D.Double refVec;	// reference vector for keeping track of point velocity
 	private boolean startPos;	// whether the first dot product of all polygon sides comes out as positive or negative
 	private boolean zero;       // whether a dot product of zero is detected
+	private int j = 0;	// keep track of index belonging to smallest side's first vertex
 
 	// Tracer and Bounces
 	// TODO: PUT MEMBERS FOR THE TRACER AND BOUNCES HERE
@@ -541,11 +542,9 @@ public final class View
 		// current speed factor...
 		Point2D.Double refScale = new Point2D.Double(refVec.x*model.getFactor(), refVec.y*model.getFactor());
 
-		// if current vertex in for loop's distance from object is smaller than s1, replace s1 with current vertex
-		// if bigger than s1 but smaller than s2, replace s2
-		Point2D.Double s1 = new Point2D.Double(0.0, 0.0); // first smallest vertex
-		Point2D.Double s2 = new Point2D.Double(0.0, 0.0); // second smallest vertex
-		int j, k;	// keep track of indices belonging to smallest and second smallest vertices
+		// initialize points of each side's vertices
+		Point2D.Double p1;
+		Point2D.Double p2;
 
 		// ...then loop to consume the scaled vector until nothing is left.
 		while (true)
@@ -554,53 +553,41 @@ public final class View
 
 			//    Loop the polygon counterclockwise, taking vertices pairwise.
 
-			for(int i = 0; i < /* polyVertices.length */ polyVertices.length-1; i++)
+			for(int i = 0; i < polyVertices.length; i++)
 			{
 				// prototype, could be optimized
 				if(i == polyVertices.length-1) // if last vertex, pair with 0th index
 				{
-					Point2D.Double p1 = new Point2D.Double(polyVertices[i].x, polyVertices[i].y);
-					Point2D.Double p2 = new Point2D.Double(polyVertices[0].x, polyVertices[0].y);
+					p1 = new Point2D.Double(polyVertices[i].x, polyVertices[i].y);
+					p2 = new Point2D.Double(polyVertices[0].x, polyVertices[0].y);
 				}
 				else 
 				{
-					Point2D.Double p1 = new Point2D.Double(polyVertices[i].x, polyVertices[i].y);
-					Point2D.Double p2 = new Point2D.Double(polyVertices[i+1].x, polyVertices[i+1].y);
+					p1 = new Point2D.Double(polyVertices[i].x, polyVertices[i].y);
+					p2 = new Point2D.Double(polyVertices[i+1].x, polyVertices[i+1].y);
 				}
 
 				Point2D.Double p = new Point2D.Double(p2.x-p1.x, p2.y-p1.y);
 				Point2D.Double n = new Point2D.Double(-p.y, p.x);
 
-				if (i == 0) 
+				Point2D.Double pj1 = new Point2D.Double(polyVertices[j].x, polyVertices[j].y);
+				Point2D.Double pj2 = new Point2D.Double(polyVertices[j+1].x, polyVertices[j+1].y);
+				Point2D.Double pj = new Point2D.Double(pj2.x-pj1.x, pj2.y-pj1.y);
+				Point2D.Double nj = new Point2D.Double(-pj.y, pj.x);
+				System.out.println("i: " + i + "\ni.x: " + polyVertices[i].x + "\ni.y: " + polyVertices[i].y);
+				/* System.out.println("pj1: " + pj1
+									+ "\npj2: " + pj2
+									+ "\npj: " + pj
+									+ "\nnj: " + nj
+									+ "\ni: " + i
+									+ "\ndot(n): " + dot(refVec.x, refVec.y, 0, n.x, n.y, 0)
+									+  "\ndot(nj): " + dot(refVec.x, refVec.y, 0, nj.x, nj.y, 0)); */
+				if (dot(refVec.x, refVec.y, 0, n.x, n.y, 0) < dot(refVec.x, refVec.y, 0, nj.x, nj.y, 0)) // might have issues with negatives and lack of comparing abs value
 				{
-					if (dot(refVec.x, refVec.y, 0, n.x, n.y, 0) > 0) 
-					{
-						startPos = true;
-					}
-					else if (dot(refVec.x, refVec.y, 0, n.x, n.y, 0) < 0) 
-					{
-						startPos = false;
-					}
-					else if (dot(refVec.x, refVec.y, 0, n.x, n.y, 0) == 0) 
-					{
-						startPos = false; 
-						zero = true;
-					}
+					System.out.println("bruh");
 					j = i;
 				}
-				else if (i == 1) 
-				{
-
-					if ()
-				}
-				else if (i == polyvertices.length-1)
-				{
-
-				}
-				else 
-				{
-
-				}
+				System.out.println("j: " + j);
 
 				// P_hit = R + v((n dot (Q-R))/(n dot v))
 				// P = R + vt		<-- R is starting point, aka the 'b' in y = mx + b
