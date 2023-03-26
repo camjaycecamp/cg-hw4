@@ -600,8 +600,8 @@ public final class View
 				pj = new Point2D.Double(pj2.x-pj1.x, pj2.y-pj1.y);
 				nj = new Point2D.Double(-pj.y, pj.x);
 
-				double d = dot(refVec.x, refVec.y, 0, n.x, n.y, 0);	// find dot of i...
-				dj = dot(refVec.x, refVec.y, 0, nj.x, nj.y, 0); // pull up dot of j...
+				double d = dot(refScale.x, refScale.y, 0, n.x, n.y, 0);	// find dot of i...
+				dj = dot(refScale.x, refScale.y, 0, nj.x, nj.y, 0); // pull up dot of j...
 
 				double t = dot(n.x, n.y, 0.0, (polyVertices[i].x-object.x), (polyVertices[i].y-object.y), 0.0)/d; // now find t_hit of i...
 				tj = dot(nj.x, nj.y, 0.0, (polyVertices[j].x-object.x), (polyVertices[j].y-object.y), 0.0)/dj; // and t_hit of j...
@@ -645,13 +645,13 @@ public final class View
 			}
 			else 
 			{
-				System.out.println("bruh");
 				Point2D.Double v_reflected = new Point2D.Double(refScale.x-2*(dot(refScale.x, refScale.y, 0, nj.x, nj.y, 0))*nj.x,
 																refScale.y-2*(dot(refScale.x, refScale.y, 0, nj.x, nj.y, 0))*nj.y);
+				System.out.println("v_reflected: " + v_reflected.toString()
+									+ "\n");
 				Point2D.Double object_hit = new Point2D.Double(object.x+refScale.x*tj, object.y+refScale.y*tj);
 				model.setObjectInSceneCoordinates(new Point2D.Double(object_hit.x+v_reflected.x*(1-tj), object_hit.y+v_reflected.y*(1-tj)));
 				refScale = v_reflected;
-				System.out.println("bruh2");
 			}
 			//    Or if it WILL reach the side:
 
