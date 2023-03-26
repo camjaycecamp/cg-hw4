@@ -86,6 +86,7 @@ public final class View
 	// Reference Vector
 	// TODO: PUT MEMBERS FOR THE REFERENCE VECTOR HERE
 	private Point2D.Double refVec;	// reference vector for keeping track of point velocity
+	private Point2D.Double refScale; // scaled version of refVec
 	private int j = 0;	// keep track of index belonging to first vertex of side the moding poing will reach first
 	private Point2D.Double pj1;	// keeping track of what j's first and second vertices are for comparing to current index's dot product
 	private Point2D.Double pj2;
@@ -123,6 +124,7 @@ public final class View
 		// Initialize reference vector
 		// TODO: INITIALIZE MEMBERS FOR THE REFERENCE VECTOR HERE
 		refVec = new Point2D.Double(0.02, -0.01);
+		refScale = new Point2D.Double(refVec.x*model.getFactor(), refVec.y*model.getFactor());
 
 		// Initialize tracer and bounces
 		// TODO: INITIALIZE MEMBERS FOR THE TRACER AND BOUNCES HERE
@@ -546,7 +548,7 @@ public final class View
 
 		// For each update, copy the reference vector and scale it by the
 		// current speed factor...
-		Point2D.Double refScale = new Point2D.Double(refVec.x*model.getFactor(), refVec.y*model.getFactor());
+		/* Point2D.Double refScale = new Point2D.Double(refVec.x*model.getFactor(), refVec.y*model.getFactor()); */
 
 		// initialize points of each side's vertices
 		Point2D.Double p1;
@@ -640,6 +642,7 @@ public final class View
 			//    simply add the vector to it, and break out of the loop.
 			if(tj >= 1) 
 			{
+				refScale = new Point2D.Double(refVec.x*model.getFactor(), refVec.y*model.getFactor());
 				model.setObjectInSceneCoordinates(new Point2D.Double(object.x+refScale.x, object.y+refScale.y));
 				break;
 			}
@@ -648,7 +651,8 @@ public final class View
 				Point2D.Double v_reflected = new Point2D.Double(refScale.x-2*(dot(refScale.x, refScale.y, 0, nj.x, nj.y, 0))*nj.x,
 																refScale.y-2*(dot(refScale.x, refScale.y, 0, nj.x, nj.y, 0))*nj.y);
 				System.out.println("v_reflected: " + v_reflected.toString()
-									+ "\n");
+									+ "\nrefScale: " + refScale.toString()
+									+ "\ndot(refScale, nj): " + dot(refScale.x, refScale.y, 0, nj.x, nj.y, 0));
 				Point2D.Double object_hit = new Point2D.Double(object.x+refScale.x*tj, object.y+refScale.y*tj);
 				model.setObjectInSceneCoordinates(new Point2D.Double(object_hit.x+v_reflected.x*(1-tj), object_hit.y+v_reflected.y*(1-tj)));
 				refScale = v_reflected;
