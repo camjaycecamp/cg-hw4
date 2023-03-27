@@ -86,17 +86,16 @@ public final class View
 	// Reference Vector
 	// TODO: PUT MEMBERS FOR THE REFERENCE VECTOR HERE
 	private Point2D.Double refVec;	// reference vector for keeping track of point velocity
-	private Point2D.Double refScale; // scaled version of refVec
-	private int j = 0;	// keep track of index belonging to first vertex of side the moding poing will reach first
-	private Point2D.Double pj1;	// keeping track of what j's first and second vertices are for comparing to current index's dot product
-	private Point2D.Double pj2;
-	private Point2D.Double pj; // vector of j
-	private Point2D.Double nj; // normal of j's vector
-	private double tj; // time that the point will hit j's side
-	private double dj; // dot product of j
+	private Point2D.Double p1; // track the points of the first and second vertices of a polygon's side in the for loop
+	private Point2D.Double p2;
+	private Point2D.Double hp; // the hitpoint of the closest side for the moving point
+	private Point2D.Double n; // the normal of the closest side to the moving point
 
 	// Tracer and Bounces
 	// TODO: PUT MEMBERS FOR THE TRACER AND BOUNCES HERE
+	private ArrayList<Point2D.Double> tracer; // keeps track of object trajectory and renders up to <=1 second
+	private ArrayList<Point2D.Double> bounces; // keeps track of object hit points
+	private ArrayList<Long> age; // keeps track of system time in milliseconds, for comparing age of elements in tracer
 
 
 	//**********************************************************************
@@ -124,10 +123,12 @@ public final class View
 		// Initialize reference vector
 		// TODO: INITIALIZE MEMBERS FOR THE REFERENCE VECTOR HERE
 		refVec = new Point2D.Double(0.02, -0.01);
-		refScale = new Point2D.Double(refVec.x*model.getFactor(), refVec.y*model.getFactor());
 
 		// Initialize tracer and bounces
 		// TODO: INITIALIZE MEMBERS FOR THE TRACER AND BOUNCES HERE
+		tracer = new ArrayList<Point2D.Double>();
+		bounces = new ArrayList<Point2D.Double>();
+		age = new ArrayList<Long>();
 
 		// Initialize controller (interaction handlers)
 		keyHandler = new KeyHandler(this, model);
@@ -166,6 +167,9 @@ public final class View
 		// Remove all trajectory and bounce points
 
 		// TODO: YOUR CODE HERE
+		age.clear();
+		bounces.clear();
+		tracer.clear();
 	}
 
 	//**********************************************************************
@@ -191,7 +195,6 @@ public final class View
 	public void	display(GLAutoDrawable drawable)
 	{
 		updatePipeline(drawable);
-		if(j > polyVertices.length-1) j = 0; // prevents OOB sections when switching between polygons of greater and fewer sizes
 		update(drawable);
 		render(drawable);
 	}
@@ -213,12 +216,28 @@ public final class View
 		Deque<Point2D.Double>	polygon = getCurrentPolygon();
 		Point2D.Double			q = model.getObject();
 
-		if(j > polyVertices.length-1) j = 0; // prevents OOB sections when switching between polygons of greater and fewer sizes
-
 		updatePointWithReflection(polygon, q);
 		model.setObjectInSceneCoordinatesAlt(new Point2D.Double(q.x, q.y));
 
 		// Remove old (>1 second) trajectory and bounce points
+		boolean oldPurged = false;
+		while(!oldPurged) 
+		{
+			if(age.size() == 0) break;
+			if((System.currentTimeMillis()-age.get(0)) > 1000) 
+			{
+				age.remove(0);
+				tracer.remove(0);
+			}
+			else oldPurged = true;
+		}
+		/* for(int i = 0; i < age.size(); i++) 
+		{
+			if((System.currentTimeMillis()-age.get(i)) > 1000) 
+			{
+
+			}
+		} */
 
 		// TODO: YOUR CODE HERE
 	}
@@ -394,12 +413,39 @@ public final class View
 	private void	drawTracing(GL2 gl)
 	{
 		// TODO: YOUR CODE HERE
+		gl.glPointSize(2.0f);				// Set point size (in pixels)
+		setColor(gl, 255, 0, 0);		// Red
+
+		// if collision detected w/ polygon, adjust vector trajectory according to reflection angle
+		// otherwise, travel normally
+		gl.glBegin(GL.GL_POINTS);
+		
+		for(int i = 0; i < tracer.size(); i++) 
+		{
+			// System.out.println(tracer.get(0).toString());
+			gl.glVertex2d(tracer.get(i).x, tracer.get(i).y);
+		}
+		
+		gl.glEnd();
 	}
 
 	// Draw the reflection points on the polygon.
 	private void	drawBounces(GL2 gl)
 	{
 		// TODO: YOUR CODE HERE
+		gl.glPointSize(2.0f);				// Set point size (in pixels)
+		setColor(gl, 0, 255, 0);		// Green
+
+		// if collision detected w/ polygon, adjust vector trajectory according to reflection angle
+		// otherwise, travel normally
+		gl.glBegin(GL.GL_POINTS);
+		
+		for(int i = 0; i < bounces.size(); i++) 
+		{
+			gl.glVertex2d(bounces.get(i).x, bounces.get(i).y);
+		}
+		
+		gl.glEnd();
 	}
 
 	//**********************************************************************
@@ -545,126 +591,121 @@ public final class View
 
 		// Use the reference vector to remember the current direction of
 		// movement with a magnitude equal to the default distance (factor=1.0).
-
 		// For each update, copy the reference vector and scale it by the
 		// current speed factor...
-		/* Point2D.Double refScale = new Point2D.Double(refVec.x*model.getFactor(), refVec.y*model.getFactor()); */
+		Point2D.Double refScale = new Point2D.Double(refVec.x*model.getFactor(), refVec.y*model.getFactor());
 
-		// initialize points of each side's vertices
-		Point2D.Double p1;
-		Point2D.Double p2;
+		// 1. Calculate which side the point will reach first.
 
-		// ...then loop to consume the scaled vector until nothing is left.
-		while (true)
+		// variables for interpolating the side with a point on it that the moving point will reach first
+		hp = null;
+		n = null;
+		double sd = 99999999; // narrows down the side with the closest distance to the moving point
+
+		// Loop the polygon counterclockwise, taking vertices pairwise.
+		// For each side, see "Intersection of a Line through a Line".
+		// Important: Check for edge cases (pun?) in which q is parallel
+		// to the side or slightly outside it (due to roundoff error).
+		// See Figure 4.37 and the dot products below it on page 176.
+		// Always remember to check for divide-by-zero!
+		// 
+		// P_hit = R + v((n dot (Q-R))/(n dot v))
+		// P = R + vt		<-- R is starting point, aka the 'b' in y = mx + b
+		// v is reference vector, unaltered by point speed which goes from 0.0 to 1.0
+		// in context of view.object, this makes R the location of object when no point speed is applied
+		// n is (-(p2-p1).y, (p2-p1).x)
+		// Q is the first of the two vertices of any side, i.e. the q_j followed by q_j+1
+		//
+		// to figure out which side the point will hit first before calulating the trajectory, all we need to do is the following steps:
+		// 1. find dot product of vector and each side's normal (-y, x)
+		// 2. the side the vector will reach first *should* be the side with the smallest positive dot product
+		// 3. plug said side into reflecting trajectories bottom left equations and go from there
+
+		// loop through each vertex and find the one that produces the side the moving point will hit next
+		for(int i = 0; i < polyVertices.length; i++)
 		{
-			// 1. Calculate which side the point will reach first.
-
-			//    Loop the polygon counterclockwise, taking vertices pairwise.
-
-			//    For each side, see "Intersection of a Line through a Line".
-
-			//    Important: Check for edge cases (pun?) in which q is parallel
-			//    to the side or slightly outside it (due to roundoff error).
-			//    See Figure 4.37 and the dot products below it on page 176.
-
-			//    Always remember to check for divide-by-zero!
-
-			// loop through each vertex and find the one that produces the side the moving point will hit next
-			for(int i = 0; i < polyVertices.length; i++)
+			if(i == polyVertices.length-1) // if last vertex, pair with 0th index
 			{
-				if(i == polyVertices.length-1) // if last vertex, pair with 0th index
-				{
-					// pair vertex on current index with that of following index
-					p1 = new Point2D.Double(polyVertices[i].x, polyVertices[i].y);
-					p2 = new Point2D.Double(polyVertices[0].x, polyVertices[0].y);
-				}
-				else 
-				{
-					p1 = new Point2D.Double(polyVertices[i].x, polyVertices[i].y);
-					p2 = new Point2D.Double(polyVertices[i+1].x, polyVertices[i+1].y);
-				}
-
-				Point2D.Double p = new Point2D.Double(p2.x-p1.x, p2.y-p1.y); // find vector from vertices...
-				Point2D.Double n = new Point2D.Double(-p.y, p.x); // ...then find normal from vector
-
-				if(j == polyVertices.length-1) // if last vertex, pair with 0th index
-				{
-					// same process for j, the first vertex of the size the point is currently heading for, as with i
-					pj1 = new Point2D.Double(polyVertices[j].x, polyVertices[j].y);
-					pj2 = new Point2D.Double(polyVertices[0].x, polyVertices[0].y);
-				}
-				else 
-				{
-					pj1 = new Point2D.Double(polyVertices[j].x, polyVertices[j].y);
-					pj2 = new Point2D.Double(polyVertices[j+1].x, polyVertices[j+1].y);
-				}
-
-				pj = new Point2D.Double(pj2.x-pj1.x, pj2.y-pj1.y);
-				nj = new Point2D.Double(-pj.y, pj.x);
-
-				double d = dot(refScale.x, refScale.y, 0, n.x, n.y, 0);	// find dot of i...
-				dj = dot(refScale.x, refScale.y, 0, nj.x, nj.y, 0); // pull up dot of j...
-
-				double t = dot(n.x, n.y, 0.0, (polyVertices[i].x-object.x), (polyVertices[i].y-object.y), 0.0)/d; // now find t_hit of i...
-				tj = dot(nj.x, nj.y, 0.0, (polyVertices[j].x-object.x), (polyVertices[j].y-object.y), 0.0)/dj; // and t_hit of j...
-				/* System.out.println("i: " + i
-					+ "\nj: " + j);
-				System.out.println("t: " + t
-									+ "\ntj: " + tj); */
-				// if t_hit of both are positive and i is smaller...
-				// or if t_hit of j is negative and i is positive...
-				// or if t_hit of both is negative and i is greater...
-				// then j becomes i
-				// even in the lattermost case, it's better to be closer to a proper value since it sets things up more easily
-				// and when j is positive as it should be, things work as they should (in theory)
-				if((t > 0 && tj > 0 && t < tj) 
-					|| (t > 0 && tj < 0)
-					|| (t < 0 && tj < 0 && t > tj)) 
-				{
-					j = i;
-					tj = dot(nj.x, nj.y, 0.0, (polyVertices[j].x-object.x), (polyVertices[j].y-object.y), 0.0)/dj; // run once more in case update needed in reflection
-					System.out.println("j switched, now is " + j);
-				}
-				// P_hit = R + v((n dot (Q-R))/(n dot v))
-				// P = R + vt		<-- R is starting point, aka the 'b' in y = mx + b
-				// v is reference vector, unaltered by point speed which goes from 0.0 to 1.0
-				// in context of view.object, this makes R the location of object when no point speed is applied
-				// n is (-(p2-p1).y, (p2-p1).x)
-				// Q is the first of the two vertices of any side, i.e. the q_j followed by q_j+1
-				//
-				// to figure out which side the point will hit first before calulating the trajectory, all we need to do is the following steps:
-				// 1. find dot product of vector and each side's normal (-y, x)
-				// 2. the side the vector will reach first *should* be the side with the smallest positive dot product
-				// 3. plug said side into reflecting trajectories bottom left equations and go from there
-			}
-
-			// 2. If the point WON'T reach the closest side in this update,
-			//    simply add the vector to it, and break out of the loop.
-			if(tj >= 1) 
-			{
-				refScale = new Point2D.Double(refVec.x*model.getFactor(), refVec.y*model.getFactor());
-				model.setObjectInSceneCoordinates(new Point2D.Double(object.x+refScale.x, object.y+refScale.y));
-				break;
+				// pair vertex on current index with that of following index
+				p1 = new Point2D.Double(polyVertices[i].x, polyVertices[i].y);
+				p2 = new Point2D.Double(polyVertices[0].x, polyVertices[0].y);
 			}
 			else 
 			{
-				Point2D.Double v_reflected = new Point2D.Double(refScale.x-2*(dot(refScale.x, refScale.y, 0, nj.x, nj.y, 0))*nj.x,
-																refScale.y-2*(dot(refScale.x, refScale.y, 0, nj.x, nj.y, 0))*nj.y);
-				System.out.println("v_reflected: " + v_reflected.toString()
-									+ "\nrefScale: " + refScale.toString()
-									+ "\ndot(refScale, nj): " + dot(refScale.x, refScale.y, 0, nj.x, nj.y, 0));
-				Point2D.Double object_hit = new Point2D.Double(object.x+refScale.x*tj, object.y+refScale.y*tj);
-				model.setObjectInSceneCoordinates(new Point2D.Double(object_hit.x+v_reflected.x*(1-tj), object_hit.y+v_reflected.y*(1-tj)));
-				refScale = v_reflected;
+				p1 = new Point2D.Double(polyVertices[i].x, polyVertices[i].y);
+				p2 = new Point2D.Double(polyVertices[i+1].x, polyVertices[i+1].y);
 			}
-			//    Or if it WILL reach the side:
 
-			//    Move the point to the hit point on the closest side.
-			//    Calculate the reflected vector. Reduce it by the amount
-			//    already moved, and use it as the new scaled vector.
+			Point2D.Double vo = new Point2D.Double(object.x-p1.x, object.y-p1.y); // find vector between first vertex and object...
+			Point2D.Double vi = new Point2D.Double(p2.x-p1.x, p2.y-p1.y); // ...then find vector from vertices...
+			//Point2D.Double ni = new Point2D.Double(-p.y, p.x); // ...then find normal from vector
 
-			// After bounces, remember to update the direction of the reference
-			// vector for the next time updatePointWithReflection() is called!
+			// projection a = v . n / n . n
+			double a = dot(vo.x, vo.y, 0, vi.x, vi.y, 0)/dot(vi.x, vi.y, 0, vi.x, vi.y, 0);
+
+			// make the projection a unit
+			if (a>1) a = 1;
+			else if (a<0) a = 0;
+
+			// use interpolation to find point along side closest to the moving object
+			Point2D.Double ip = new Point2D.Double(p1.x + a*vi.x, p1.y + a*vi.y);
+
+			// find distance between object and interpolated point
+			double d = ip.distance(object);
+
+			if(d < sd) // becomes new closest side if smaller distance than current smallest side
+			{
+				double l = Math.sqrt(dot(vi.x, vi.y, 0, vi.x, vi.y, 0)); // length of side
+				n = new Point2D.Double(-vi.y/l, vi.x/l); // normal of new closest side, scaled to length
+				hp = ip; // set hitpoint of object on side to the interpolated point
+				sd = d; // finally, update closest distance to object
+			}
+		}
+
+		// 2. If the point WON'T reach the closest side in this update,
+		//    simply add the vector to it, and break out of the loop.
+		//    Or if it WILL reach the side:
+		//    Move the point to the hit point on the closest side.
+		//    Calculate the reflected vector. Reduce it by the amount
+		//    already moved, and use it as the new scaled vector.
+		//    After bounces, remember to update the direction of the reference
+		//    vector for the next time updatePointWithReflection() is called!
+
+		// the object is contained after it is moved, then move it no problem
+		if(contains(new Point2D.Double(object.x+refScale.x, object.y+refScale.y)) == true) 
+		{
+			// add new point to object trail and keep track of its add time
+			age.add(System.currentTimeMillis());
+			tracer.add(new Point2D.Double(object.x, object.y));
+
+			// update position of object
+			model.setObjectInSceneCoordinates(new Point2D.Double(object.x+refScale.x, object.y+refScale.y));
+		}
+		else // otherwise, implement reflection
+		{
+			// add new bounce point to list
+			bounces.add(new Point2D.Double(hp.x, hp.y));
+
+			// move object to interpolated hit point
+			model.setObjectInSceneCoordinates(new Point2D.Double(hp.x, hp.y));
+
+			// update scaled vector
+			refScale.x -= 2 * dot(refScale.x, refScale.y, 0, n.x, n.y, 0) * n.x;
+			refScale.y -= 2 * dot(refScale.x, refScale.y, 0, n.x, n.y, 0) * n.y;
+
+			// determine ratio of original speed to new speed
+			double rx = Math.abs(refVec.x);
+			double ry = Math.abs(refVec.y);
+			double rsx = Math.abs(refScale.x/model.getFactor());
+			double rsy = Math.abs(refScale.y/model.getFactor());
+			double ratio = Math.abs((rx+ry)/(rsx+rsy));
+
+			/* System.out.println("\nrefVec: " + refVec.toString()
+								+ "\nrefScale: " + refScale.toString()); */
+
+			// change current vector to new direction, maintain speed between vectors
+			refVec.x = (refScale.x/model.getFactor())*ratio;
+			refVec.y = (refScale.y/model.getFactor())*ratio;
 		}
 	}
 
@@ -714,14 +755,10 @@ public final class View
 
 		for(int i = 0; i < polyVertices.length; i++) 
 		{
-			/* System.out.println("\npolyVertices[" + i + "]: " + polyVertices[i].toString());
-			System.out.println("polyVertices[" + (i+1) + "]: " + polyVertices[i+1].toString() + "\n"); */
 			if(i == polyVertices.length-1) 
 			{
 				if(!isLeft(polyVertices[i], polyVertices[0], q, true)) 
 				{
-					/* System.out.println("\npolyVertices[" + i + "]: " + polyVertices[i].toString());
-					System.out.println("polyVertices[" + (i+1) + "]: " + polyVertices[i+1].toString() + "\n"); */
 					return false;
 				}
 			}
@@ -729,8 +766,6 @@ public final class View
 			{
 				if(!isLeft(polyVertices[i], polyVertices[i+1], q, true)) 
 				{
-					/* System.out.println("\npolyVertices[" + i + "]: " + polyVertices[i].toString());
-					System.out.println("polyVertices[" + (i+1) + "]: " + polyVertices[i+1].toString() + "\n"); */
 					return false;
 				}
 			}

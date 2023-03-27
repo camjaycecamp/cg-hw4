@@ -166,7 +166,8 @@ public final class Model
 	{
 		view.getCanvas().invoke(false, new BasicUpdater() {
 			public void	update(GL2 gl) {
-				object = new Point2D.Double(0.0, 0.0);
+				// object = new Point2D.Double(0.0, 0.0);
+				setObjectInSceneCoordinates(new Point2D.Double(0.0, 0.0));
 				number = Math.min(Math.max(v, 2), View.MAX_SIDES);
 
 				view.clearAllTrace();

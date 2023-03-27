@@ -73,18 +73,20 @@ public final class KeyHandler extends KeyAdapter
 
 			case KeyEvent.VK_Q:	// Decrement sides, in [2, MAX], 2=special
 				// TODO: YOUR CODE HERE
-				if(model.getNumber() > View.MIN_SIDES) 
+				/* if(model.getNumber() > View.MIN_SIDES) 
 				{
 					model.setNumber(number-1);
-				}
+				} */
+				model.setNumber(number-1);
 				break;
 
 			case KeyEvent.VK_W:	// Increment sides, in [2, MAX], 2=special
 				// TODO: YOUR CODE HERE
-				if(model.getNumber() < View.MAX_SIDES) 
+				/* if(model.getNumber() < View.MAX_SIDES) 
 				{
 					model.setNumber(number+1);
-				}
+				} */
+				model.setNumber(number+1);
 				break;
 
 			case KeyEvent.VK_A:	// Decrease speed by 1.1x, 2x if shift down
